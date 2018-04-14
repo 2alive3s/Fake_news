@@ -56,16 +56,6 @@ file_train_instances = "mission2_complete1.csv"
 print("Loading data...")
 x_heads, x_bodies, y = data_helpers.load_data_and_labels(file_train_instances)
 
-#bow_head = TfidfVectorizer(tokenizer=None, lowercase=False, max_features=128)
-#bow_body = TfidfVectorizer(tokenizer=None, lowercase=False, max_features=1280)
-
-#bow_head_vec = bow_head.fit_transform(x_heads)
-#bow_body_vec = bow_body.fit_transform(x_bodies)
-
-#bow_head_vocab = [v[0] for v in sorted(bow_head.vocabulary_.items(),key=operator.itemgetter(1))]
-#print(x_heads)
-#print(bow_head_vocab)
-
 # Build vocabulary_head
 max_document_length_head = max([len(x.split(" ")) for x in x_heads])
 vocab_processor_head = learn.preprocessing.VocabularyProcessor(max_document_length=128)#bow_head max_features
@@ -98,10 +88,7 @@ y_train, y_dev = y_shuffled[:-1000], y_shuffled[-1000:]
 print("Vocabulary Size_head: {:d}".format(len(vocab_processor_head.vocabulary_)))
 print("Vocabulary Size_body: {:d}".format(len(vocab_processor_body.vocabulary_)))
 print("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev)))
-print(x_train_head)
-print(x_train_body)
-print(x_train_head.shape)
-print(x_train_body.shape)
+
 # Training
 # ==================================================
 
@@ -175,8 +162,6 @@ with tf.Graph().as_default():
         body_embedding = data_helpers.load_word_embedding("fasttext_3_10.vec",vocab_processor_body,FLAGS.embedding_dim)
         sess.run(cnn.embeddings_head.assign(head_embedding))
         sess.run(cnn.embeddings_body.assign(body_embedding))
- #       sess.run(cnn.cnn_head.W.assign(initW))
- #       sess.run(cnn.cnn_body.W.assign(initW))
             
         def train_step(x_batch_head, x_batch_body, y_batch):
             """
