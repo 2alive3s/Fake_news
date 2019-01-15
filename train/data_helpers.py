@@ -25,7 +25,7 @@ class Data:
         self.labels = {}
          
         for instance in self.instances:
-            instance['seqid'] = int(instance['\ufeffseqid'])
+            instance['seqid'] = int(instance['seqid'])
             
         for head in self.instances:
             self.headlines[head['seqid']] = head['title']

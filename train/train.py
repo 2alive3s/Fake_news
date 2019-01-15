@@ -15,9 +15,6 @@ import datetime
 import data_helpers
 from affine import Affine
 from tensorflow.contrib import learn
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.feature_extraction.text import TfidfTransformer
 import codecs
 import operator
 
@@ -32,7 +29,7 @@ tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (defau
 tf.flags.DEFINE_float("l2_reg_lambda", 0.1, "L2 regularizaion lambda (default: 0.0)")
 
 # Training parameters
-tf.flags.DEFINE_integer("batch_size",63, "Batch Size (default: 64)")
+tf.flags.DEFINE_integer("batch_size",127, "Batch Size (default: 64)")
 tf.flags.DEFINE_integer("num_epochs", 100, "Number of training epochs (default: 200)")
 tf.flags.DEFINE_integer("evaluate_every", 100, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 100, "Save model after this many steps (default: 100)")
@@ -50,11 +47,21 @@ print("")
 # Data Preparatopn
 # ==================================================
 
-file_train_instances = "mission2_complete1.csv"
+file_train_instances = "res.csv"
 
 # Load data
 print("Loading data...")
 x_heads, x_bodies, y = data_helpers.load_data_and_labels(file_train_instances)
+
+#bow_head = TfidfVectorizer(tokenizer=None, lowercase=False, max_features=128)
+#bow_body = TfidfVectorizer(tokenizer=None, lowercase=False, max_features=1280)
+
+#bow_head_vec = bow_head.fit_transform(x_heads)
+#bow_body_vec = bow_body.fit_transform(x_bodies)
+
+#bow_head_vocab = [v[0] for v in sorted(bow_head.vocabulary_.items(),key=operator.itemgetter(1))]
+#print(x_heads)
+#print(bow_head_vocab)
 
 # Build vocabulary_head
 max_document_length_head = max([len(x.split(" ")) for x in x_heads])
@@ -82,13 +89,16 @@ y_shuffled = y[shuffle_indices]
 
 # Split train/test set
 # TODO: This is very crude, should use cross-validation
-x_train_head, x_dev_head = x_head_shuffled[:-1000], x_head_shuffled[-1000:]
-x_train_body, x_dev_body = x_body_shuffled[:-1000], x_body_shuffled[-1000:]
-y_train, y_dev = y_shuffled[:-1000], y_shuffled[-1000:]
+x_train_head, x_dev_head = x_head_shuffled[:-6000], x_head_shuffled[-6000:]
+x_train_body, x_dev_body = x_body_shuffled[:-6000], x_body_shuffled[-6000:]
+y_train, y_dev = y_shuffled[:-6000], y_shuffled[-6000:]
 print("Vocabulary Size_head: {:d}".format(len(vocab_processor_head.vocabulary_)))
 print("Vocabulary Size_body: {:d}".format(len(vocab_processor_body.vocabulary_)))
 print("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev)))
-
+print(x_train_head)
+print(x_train_body)
+print(x_train_head.shape)
+print(x_train_body.shape)
 # Training
 # ==================================================
 
@@ -150,7 +160,7 @@ with tf.Graph().as_default():
         checkpoint_prefix = os.path.join(checkpoint_dir, "model")
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
-        saver = tf.train.Saver(tf.global_variables())
+        saver = tf.train.Saver(tf.global_variables(),max_to_keep=500)
 
         # Write vocabulary
         vocab_processor_head.save(os.path.join(out_dir, "vocab_head"))
@@ -162,6 +172,8 @@ with tf.Graph().as_default():
         body_embedding = data_helpers.load_word_embedding("fasttext_3_10.vec",vocab_processor_body,FLAGS.embedding_dim)
         sess.run(cnn.embeddings_head.assign(head_embedding))
         sess.run(cnn.embeddings_body.assign(body_embedding))
+ #       sess.run(cnn.cnn_head.W.assign(initW))
+ #       sess.run(cnn.cnn_body.W.assign(initW))
             
         def train_step(x_batch_head, x_batch_body, y_batch):
             """
@@ -219,13 +231,13 @@ with tf.Graph().as_default():
                     loss_total = loss_total + loss_dev
                     print(predictions)
                     total = total + 1
-                results = codecs.open('results_mission2_new.txt','a')
+                results = codecs.open('results_all_new.txt','a')
                 result = "total loss {:g}, total acc {:g}".format(loss_total/total, acc_total/total)
                 print(result)
-                results.write("total loss{:g}, total acc{:g}".format(loss_total/total, acc_total/total) + '\n')
+                results.write("step{:g}, total loss{:g}, total acc{:g}".format(current_step, loss_total/total, acc_total/total) + '\n')
                 results.close()
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
-                path = saver.save(sess, checkpoint_prefix, global_step=current_step, max_to_keep=500)
+                path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                 print(path)
                 print("Saved model checkpoint to {}\n".format(path))

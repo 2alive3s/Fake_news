@@ -7,6 +7,9 @@ Created on Sun Nov 12 11:21:21 2017
 import tensorflow as tf
 import numpy as np
 from text_cnn import TextCNN
+from tensorflow.contrib.rnn import GRUCell
+from tensorflow.python.ops.rnn import bidirectional_dynamic_rnn as bi_rnn
+#from tensorflow.contrib.rnn import stack_bidirectional_rnn as bi_rnn
 
 
 class Affine(object):
@@ -31,16 +34,49 @@ class Affine(object):
         self.embedded_chars_body = tf.nn.embedding_lookup(self.embeddings_body, self.input_x_body)
         self.embedded_chars_expanded_body = tf.expand_dims(self.embedded_chars_body, -1)
         
-        # Create a convolution + maxpool layer for each filter size
+        #2. LSTM LAYER ######################################################################
+        with tf.variable_scope("lstm-head") as scope:
+            #self.lstm_cell_head = tf.contrib.rnn.LSTMCell(embedding_size,state_is_tuple=True)
+            #self.lstm_out_head,self.lstm_state_head = tf.nn.dynamic_rnn(self.lstm_cell_head,self.embedded_chars_head,dtype=tf.float32)
+            #self.lstm_out_expanded_head = tf.expand_dims(self.lstm_out_head, -1)
+            self.lstm_out_head,self.lstm_state_head = bi_rnn(GRUCell(embedding_size), GRUCell(embedding_size), inputs = self.embedded_chars_head , dtype=tf.float32)
+            self.lstm_out_merge_head = tf.concat(self.lstm_out_head, axis=2)
+            self.Attention_head = tf.nn.softmax(
+                    tf.map_fn(lambda x: tf.matmul(self.W_s2, x), 
+                              tf.tanh(
+                                      tf.map_fn(
+                                              lambda x: tf.matmul(self.W_s1, tf.transpose(x)),lstm_out_merge_head))))
+            #self.lstm_out_head_fw = self.lstm_out_head[0]
+            #self.lstm_out_head_bw = self.lstm_out_head[1]
+            #self.lstm_out_merge_head = tf.concat([self.lstm_out_head_fw[-1], self.lstm_out_head_bw[-1]], axis=1)
+            self.lstm_out_expanded_head = tf.expand_dims(self.Attention_head, -1)
+            print(self.lstm_out_expanded_head.shape)
+
+#output = tf.stack(output, axis=1)
+#output = tf.reshape(output, [-1, FLAGS.num_units * 2])
+
+        with tf.variable_scope("lstm-body") as scope:
+            #self.lstm_cell_body = tf.contrib.rnn.LSTMCell(embedding_size,state_is_tuple=True)
+            #self.lstm_out_body,self.lstm_state_body = tf.nn.dynamic_rnn(self.lstm_cell_body,self.embedded_chars_body,dtype=tf.float32)
+            #self.lstm_out_expanded_body = tf.expand_dims(self.lstm_out_body, -1)
+            self.lstm_out_body,self.lstm_state_body = bi_rnn(GRUCell(embedding_size), GRUCell(embedding_size), inputs = self.embedded_chars_body , dtype=tf.float32)
+            self.lstm_out_merge_body = tf.concat(self.lstm_out_body, axis=2)
+            #self.lstm_out_body_fw = self.lstm_out_body[0]
+            #self.lstm_out_body_bw = self.lstm_out_body[1]
+            #self.lstm_out_merge_body = tf.concat([self.lstm_out_body_fw[-1], self.lstm_out_body_bw[-1]], axis=1)
+            self.lstm_out_expanded_body = tf.expand_dims(self.lstm_out_merge_body, -1)
+            
+            print(self.lstm_out_expanded_body.shape)
+        
         self.pooled_outputs_head = []
         for i, filter_size in enumerate(filter_sizes):
             with tf.name_scope("conv-maxpool-head-%s" % filter_size):
                 # Convolution Layer
-                filter_shape = [filter_size, embedding_size, 1, 256]
+                filter_shape = [filter_size, embedding_size*2, 1, 256]
                 W_head = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W_head")
                 b_head = tf.Variable(tf.constant(0.1, shape=[256]), name="b_head")
                 conv_head = tf.nn.conv2d(
-                    self.embedded_chars_expanded_head,
+                    self.lstm_out_expanded_head,
                     W_head,
                     strides=[1, 1, 1, 1],
                     padding="VALID",
@@ -60,11 +96,11 @@ class Affine(object):
         for i, filter_size in enumerate(filter_sizes):
             with tf.name_scope("conv-maxpool-body-%s" % filter_size):
                 # Convolution Layer
-                filter_shape = [filter_size, embedding_size, 1, 1024]
+                filter_shape = [filter_size, embedding_size*2, 1, 1024]
                 W_body = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W_body")
                 b_body = tf.Variable(tf.constant(0.1, shape=[1024]), name="b_body")
                 conv_body = tf.nn.conv2d(
-                    self.embedded_chars_expanded_body,
+                    self.lstm_out_expanded_body,
                     W_body,
                     strides=[1, 1, 1, 1],
                     padding="VALID",
@@ -87,15 +123,12 @@ class Affine(object):
         num_filters_total = num_filters * len(filter_sizes)
         self.h_pool = tf.concat(pooled_outputs, 3, name='concat')
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
-        print("여기")
-        print(self.h_pool_flat.shape)
-	
+       
+       	
         W_fc1 = tf.Variable(tf.truncated_normal([1280,1024],stddev=0.1),name="W_fc1")
         b_fc1 = tf.Variable(tf.constant(0.1,shape=[1024]),name="b_fc1")
         h_fc1 = tf.nn.relu(tf.matmul(self.h_pool_flat,W_fc1) + b_fc1)
-        print(h_fc1.shape)
-        print("22222")
-      
+            
         # Add dropout
         with tf.name_scope("dropout"):
             self.h_drop = tf.nn.dropout(h_fc1, self.dropout_keep_prob)
